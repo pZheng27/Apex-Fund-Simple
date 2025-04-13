@@ -252,37 +252,21 @@ const DashboardContent = () => {
           <CoinsList 
             coins={coins.filter(coin => !coin.isSold)} 
             onDeleteCoin={handleDeleteCoin}
-            onMarkAsSold={async (coinId, soldPrice) => {
+            onMarkAsSold={(coinId, soldPrice) => {
               const coinIndex = coins.findIndex(coin => coin.id === coinId);
               if (coinIndex !== -1) {
-                const updatedCoin = {
-                  ...coins[coinIndex],
+                const updatedCoins = [...coins];
+                updatedCoins[coinIndex] = {
+                  ...updatedCoins[coinIndex],
                   isSold: true,
                   soldPrice: soldPrice,
                   soldDate: new Date(),
                 };
-                
-                try {
-                  // Update in Firestore first
-                  await updateCoin(updatedCoin);
-                  
-                  // Then update local state
-                  const updatedCoins = [...coins];
-                  updatedCoins[coinIndex] = updatedCoin;
-                  setCoins(updatedCoins);
-                  
-                  toast({
-                    title: "Success",
-                    description: `Coin marked as sold for $${soldPrice}`,
-                  });
-                } catch (error) {
-                  console.error("Failed to mark coin as sold:", error);
-                  toast({
-                    title: "Update Failed",
-                    description: "Could not mark coin as sold",
-                    variant: "destructive",
-                  });
-                }
+                setCoins(updatedCoins);
+                toast({
+                  title: "Success",
+                  description: `Coin marked as sold for $${soldPrice}`,
+                });
               }
             }}
           />

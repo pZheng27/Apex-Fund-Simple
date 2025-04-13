@@ -1,19 +1,6 @@
 // src/lib/coinService.ts
 // This file contains functions for interacting with the coin database
 
-import { db } from './firebase';
-import { 
-  collection, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  getDocs, 
-  doc, 
-  onSnapshot,
-  Timestamp,
-  DocumentData
-} from 'firebase/firestore';
-
 // Example coin interface - you would typically import this from a types file
 export interface Coin {
   id: string;
@@ -39,104 +26,93 @@ export interface Coin {
  * between refreshes and deployments on Vercel.
  */
 
-// Collection reference
-const coinsCollection = collection(db, 'coins');
-
-// Helper to convert Firestore data to Coin
-const convertToCoin = (doc: DocumentData): Coin => {
-  const data = doc.data();
-  return {
-    id: doc.id,
-    name: data.name,
-    image: data.image,
-    acquisitionDate: data.acquisitionDate,
-    purchasePrice: data.purchasePrice,
-    currentValue: data.currentValue,
-    roi: data.roi,
-    description: data.description,
-    grade: data.grade,
-    mint: data.mint,
-    year: data.year,
-    isSold: data.isSold || false,
-    soldPrice: data.soldPrice,
-    soldDate: data.soldDate ? data.soldDate.toDate() : undefined
-  };
+// Initialize mock database from localStorage
+const initializeDatabase = (): Coin[] => {
+  if (typeof window !== 'undefined') {
+    const storedCoins = localStorage.getItem('apex_coins');
+    if (storedCoins) {
+      try {
+        return JSON.parse(storedCoins);
+      } catch (error) {
+        console.error('Failed to parse stored coins:', error);
+        return [];
+      }
+    }
+  }
+  return [];
 };
+
+// Save database to localStorage
+const saveToLocalStorage = (coins: Coin[]) => {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('apex_coins', JSON.stringify(coins));
+  }
+};
+
+// Mock database for development
+let mockDatabase: Coin[] = initializeDatabase();
 
 // Get all coins
 export const getAllCoins = async (): Promise<Coin[]> => {
-  try {
-    const querySnapshot = await getDocs(coinsCollection);
-    return querySnapshot.docs.map(convertToCoin);
-  } catch (error) {
-    console.error("Error getting coins: ", error);
-    return [];
-  }
+  // Refresh from localStorage each time
+  mockDatabase = initializeDatabase();
+  return mockDatabase;
 };
 
 // Add a new coin
 export const addCoin = async (coin: Omit<Coin, 'id'>): Promise<Coin> => {
-  try {
-    const docRef = await addDoc(coinsCollection, {
-      ...coin,
-      // Handle date fields correctly for Firestore
-      soldDate: coin.soldDate ? Timestamp.fromDate(new Date(coin.soldDate)) : null
-    });
-    
-    return {
-      ...coin,
-      id: docRef.id
-    };
-  } catch (error) {
-    console.error("Error adding coin: ", error);
-    throw error;
-  }
+  const newCoin = { ...coin, id: Date.now().toString() };
+  mockDatabase.push(newCoin);
+  
+  // Save to localStorage
+  saveToLocalStorage(mockDatabase);
+  
+  return newCoin;
 };
 
 // Update a coin
 export const updateCoin = async (coin: Coin): Promise<Coin> => {
-  try {
-    const coinRef = doc(db, 'coins', coin.id);
+  const index = mockDatabase.findIndex(c => c.id === coin.id);
+  if (index !== -1) {
+    mockDatabase[index] = coin;
     
-    // Prepare data for Firestore, handling Date objects
-    const coinData = {
-      ...coin,
-      soldDate: coin.soldDate ? Timestamp.fromDate(new Date(coin.soldDate)) : null
-    };
-    
-    // Remove id from the data to be updated
-    const { id, ...dataToUpdate } = coinData;
-    
-    await updateDoc(coinRef, dataToUpdate);
-    return coin;
-  } catch (error) {
-    console.error("Error updating coin: ", error);
-    throw error;
+    // Save to localStorage
+    saveToLocalStorage(mockDatabase);
   }
+  return coin;
 };
 
 // Delete a coin
 export const deleteCoin = async (coinId: string): Promise<void> => {
-  try {
-    const coinRef = doc(db, 'coins', coinId);
-    await deleteDoc(coinRef);
-  } catch (error) {
-    console.error("Error deleting coin: ", error);
-    throw error;
-  }
+  mockDatabase = mockDatabase.filter(coin => coin.id !== coinId);
+  
+  // Save to localStorage
+  saveToLocalStorage(mockDatabase);
 };
 
 // Subscribe to real-time updates
 export const subscribeToCoinsUpdates = (onUpdate: (coins: Coin[]) => void) => {
-  return onSnapshot(coinsCollection, (snapshot) => {
-    const coins = snapshot.docs.map(convertToCoin);
-    onUpdate(coins);
-  });
+  // Initial update with current data
+  onUpdate(mockDatabase);
+  
+  // Create a simple polling mechanism to check localStorage for changes
+  const intervalId = setInterval(() => {
+    const storedCoins = initializeDatabase();
+    if (JSON.stringify(storedCoins) !== JSON.stringify(mockDatabase)) {
+      mockDatabase = storedCoins;
+      onUpdate(mockDatabase);
+    }
+  }, 2000); // Check every 2 seconds
+  
+  return {
+    id: intervalId,
+    unsubscribe: () => clearInterval(intervalId)
+  };
 };
 
 // Unsubscribe from real-time updates
 export const unsubscribeFromCoinsUpdates = (subscription: any) => {
-  if (subscription) {
-    subscription();
+  if (subscription && typeof subscription.unsubscribe === 'function') {
+    subscription.unsubscribe();
   }
 }; 
